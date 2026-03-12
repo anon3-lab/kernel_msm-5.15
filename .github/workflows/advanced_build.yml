@@ -394,6 +394,10 @@ jobs:
           mkdir -p fs
           cp -f susfs4ksu/kernel_patches/fs/susfs.c fs/susfs.c
           echo "✔ Copied fs/susfs.c"
+
+          # Fix missing symbol for newer WildKSU
+          echo "void susfs_set_i_state_on_external_dir(struct inode *inode) { return; }" >> fs/susfs.c
+          echo "✔️ Added susfs_set_i_state_on_external_dir stub"
           
           # Always replace include/linux/susfs.h
           mkdir -p include/linux
