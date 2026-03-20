@@ -54,6 +54,7 @@ on:
         type: choice
         default: "O2"
         options:
+          - "default"
           - "O2"
           - "O3"
           - "Os"
@@ -115,20 +116,21 @@ jobs:
          rm -rf common
 
          # Download updated Clang r584948 from Android Git repository
-         aria2c -x 16 -s 16 -o prebuilts/clang/host/linux-x86/clang-r547379.tar.gz "https://github.com/topnotchfreaks/clang/releases/download/v1.0.0/clang-r547379.tar.gz"
+         aria2c -x 16 -s 16 -o prebuilts/clang/host/linux-x86/clang-r584948b.tar.gz "https://github.com/topnotchfreaks/clang/releases/download/v1.0.0/clang-r584948b.tar.gz"
     
-         mkdir -p prebuilts/clang/host/linux-x86/clang-r547379
-         tar -xzf prebuilts/clang/host/linux-x86/clang-r547379.tar.gz -C prebuilts/clang/host/linux-x86/clang-r547379
-         rm -rf prebuilts/clang/host/linux-x86/clang-r547379.tar.gz
+         mkdir -p prebuilts/clang/host/linux-x86/clang-r584948b
+         tar -xzf prebuilts/clang/host/linux-x86/clang-r584948b.tar.gz -C prebuilts/clang/host/linux-x86/clang-r584948b
+         rm -rf prebuilts/clang/host/linux-x86/clang-r584948b.tar.gz
 
          # Clean up old Clang versions
          rm -rf prebuilts/clang/host/linux-x86/clang-3289846
          rm -rf prebuilts/clang/host/linux-x86/clang-r450784e
+         rm -rf prebuilts/clang/host/linux-x86/clang-r547379
          rm -rf prebuilts/clang/host/linux-x86/clang-stable
          
          sed -i \
           -e 's/^BRANCH=.*/BRANCH=android13-5.15/' \
-          -e 's/^CLANG_VERSION=.*/CLANG_VERSION=r547379/' \
+          -e 's/^CLANG_VERSION=.*/CLANG_VERSION=r584948b/' \
          ${{ env.kernelDir }}/${{ env.kernelName }}/build.config.constants
     
          sed -i '/^DEFCONFIG=gki_defconfig/d' ${{ env.kernelDir }}/${{ env.kernelName }}/build.config.gki
@@ -243,14 +245,14 @@ jobs:
             args="$args AR=llvm-ar"
             args="$args CC=clang"
             echo "args=$args" >> $GITHUB_OUTPUT
-            
+
       - name: "📝 Append custom Makefile line"
-        if: github.event.inputs.buildToolchains == 'custom-tools'
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
         run: |
          echo 'KBUILD_CFLAGS += -Wno-default-const-init-unsafe' >> Makefile
          echo 'KBUILD_CFLAGS += -Wno-uninitialized-const-pointer' >> Makefile
          echo 'KBUILD_CFLAGS += -Wno-implicit-function-declaration' >> Makefile
+         echo 'KBUILD_CFLAGS += -Wno-sometimes-uninitialized' >> Makefile
          echo "Custom Makefile line added successfully"
     
       - name: "⚙️ Configure kernel"
@@ -295,6 +297,9 @@ jobs:
           
           # Apply selected optimization level
           case "${{ github.event.inputs.optimizationLevel }}" in
+            default)
+              # nothing to add here (keep it default)
+              ;;
             O2)
               echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "$CONFIG_FILE"
               echo "# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 is not set" >> "$CONFIG_FILE"
@@ -314,8 +319,8 @@ jobs:
                    
           # Apply selected tick rate
           case "${{ github.event.inputs.tickRate }}" in
-          default)
-              echo Nothing to change. Keep Default.
+            default)
+              # nothing to add here (keep it default)
               ;;
             100Hz)
               sed -i '/^CONFIG_HZ_100=/d' "$CONFIG_FILE"
@@ -358,6 +363,18 @@ jobs:
           # Sign Builds
           curl -L -o sign.patch "https://raw.githubusercontent.com/topnotchfreaks/kernel_patches/main/0001-scripts-sign-builds.patch" 
           patch -p1 < sign.patch || echo "Warning: Strings patch failed"
+
+          # localversion
+          # curl -L -o localversion.patch "https://raw.githubusercontent.com/topnotchfreaks/kernel_patches/main/0001-scripts-do-not-ship-full-auto_localversion.patch" 
+          # patch -p1 < localversion.patch || echo "Warning: Strings patch failed"
+
+      - name: "🔧 Add BBG Support (KSU variant only)"
+        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
+        run: |
+          echo "Adding BBG...";
+          wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
+          echo "CONFIG_BBG=y" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
+          sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' security/Kconfig
           
       - name: "🔧 Setup Wild KSU with SUSFS"
         if: matrix.variant == 'ksu'
@@ -368,7 +385,7 @@ jobs:
           echo "📦 Installing Wild KSU..."
 
           # Install WildKSU with SUSFS
-          curl -LSs "https://raw.githubusercontent.com/WildKernels/Wild_KSU/wild/kernel/setup.sh" | bash -s stable
+          curl -LSs "https://raw.githubusercontent.com/WildKernels/Wild_KSU/wild/kernel/setup.sh" | bash -s canary
       
           echo "✔ Wild KSU installed successfully"
           
@@ -478,7 +495,6 @@ jobs:
         run: |
           make ${args} \
             LLVM=1 \
-            LTO=thin \
             CC=clang \
             AR=llvm-ar \
             NM=llvm-nm \
@@ -547,7 +563,7 @@ jobs:
          if [ "${{ github.event.inputs.buildKSU }}" != "noksu" ]; then
           KSU_TEXT="
           
-         🔐 *KSU Variant:* \`${{ github.event.inputs.ksuVariant }}\`"
+         🔐 *KSU Variant:* \`Wild KSU\`"
          fi
       
          CAPTION="✅ *Kernel Build Successful*
